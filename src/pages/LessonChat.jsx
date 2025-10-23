@@ -9,6 +9,7 @@ const LessonChat = () => {
   const navigate = useNavigate();
   const { topics, chatMessages, addChatMessage, resetChat, getMockResponse, completeLesson } = useApp();
   const [inputMessage, setInputMessage] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
   const initializedRef = useRef(false);
 
@@ -30,19 +31,21 @@ const LessonChat = () => {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+  }, [chatMessages, isTyping]);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
     if (inputMessage.trim()) {
       addChatMessage(inputMessage, true);
       setInputMessage('');
+      setIsTyping(true);
       
       // Simulate AI response after a short delay
       setTimeout(() => {
         const response = getMockResponse(inputMessage);
         addChatMessage(response, false);
-      }, 1000);
+        setIsTyping(false);
+      }, 1500);
     }
   };
 
@@ -78,6 +81,17 @@ const LessonChat = () => {
               </div>
             </div>
           ))}
+          {isTyping && (
+            <div className="message ai-message">
+              <div className="message-bubble typing-indicator">
+                <div className="typing-dots">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
