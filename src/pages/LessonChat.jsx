@@ -7,22 +7,33 @@ import './LessonChat.css';
 const LessonChat = () => {
   const { topicId, lessonId } = useParams();
   const navigate = useNavigate();
-  const { topics, chatMessages, addChatMessage, resetChat, getMockResponse, completeLesson } = useApp();
+  const { topics, chatMessages, addChatMessage, resetChat, loadChatMessages, getMockResponse, completeLesson } = useApp();
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
   const initializedRef = useRef(false);
 
   const topic = topics.find(t => t.id === parseInt(topicId));
-  const lesson = topic?.lessons.find(l => l.id === parseInt(lessonId));
+  const lesson = topic?.lessons?.find(l => l.id === parseInt(lessonId));
 
   useEffect(() => {
-    if (!initializedRef.current && lesson) {
-      resetChat();
-      // Initial greeting from the character
-      addChatMessage(`Hello! Welcome to **"${lesson.title}"**. I'm here to help you learn. Feel free to ask me anything!`, false);
-      initializedRef.current = true;
-    }
+    const initChat = async () => {
+      if (!initializedRef.current && lesson) {
+        await resetChat(parseInt(lessonId));
+        await loadChatMessages(parseInt(lessonId));
+        
+        // If no messages, add initial greeting
+        const hasMessages = chatMessages.length > 0;
+        if (!hasMessages) {
+          const greeting = `Hello! Welcome to **"${lesson.title}"**. I'm here to help you learn. Feel free to ask me anything!`;
+          await addChatMessage(parseInt(lessonId), greeting, false);
+        }
+        
+        initializedRef.current = true;
+      }
+    };
+    
+    initChat();
     
     return () => {
       initializedRef.current = false;
@@ -33,19 +44,26 @@ const LessonChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isTyping]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     if (inputMessage.trim()) {
-      addChatMessage(inputMessage, true);
+      const userMsg = inputMessage;
       setInputMessage('');
+      
+      // Add user message
+      await addChatMessage(parseInt(lessonId), userMsg, true);
+      
       setIsTyping(true);
       
-      // Simulate AI response after a short delay
-      setTimeout(() => {
-        const response = getMockResponse(inputMessage);
-        addChatMessage(response, false);
+      // Get AI response
+      try {
+        const response = await getMockResponse(userMsg);
+        await addChatMessage(parseInt(lessonId), response, false);
+      } catch (error) {
+        console.error('Failed to get AI response:', error);
+      } finally {
         setIsTyping(false);
-      }, 1500);
+      }
     }
   };
 

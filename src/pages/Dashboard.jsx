@@ -1,14 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Modal from '../components/Modal';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const { user, topics, addTopic, logout } = useApp();
+  const { user, topics, addTopic, logout, fetchTopics } = useApp();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [topicName, setTopicName] = useState('');
+
+  // Refresh topics when returning to dashboard
+  useEffect(() => {
+    if (user) {
+      fetchTopics();
+    }
+  }, [user]);
 
   const handleCreateTopic = () => {
     if (topicName.trim()) {
@@ -37,24 +44,30 @@ const Dashboard = () => {
           </button>
         </div>
 
-        <div className="topics-grid">
-          {topics.map((topic) => (
-            <div
-              key={topic.id}
-              className="topic-card"
-              onClick={() => navigate(`/topic/${topic.id}`)}
-            >
-              <h3>{topic.name}</h3>
-              <div className="topic-stats">
-                <span>{topic.lessons.length} lessons</span>
-                <span>{topic.quizzes.length} quizzes</span>
+        {topics.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+            <p>No topics yet. Create your first topic to get started!</p>
+          </div>
+        ) : (
+          <div className="topics-grid">
+            {topics.map((topic) => (
+              <div
+                key={topic.id}
+                className="topic-card"
+                onClick={() => navigate(`/topic/${topic.id}`)}
+              >
+                <h3>{topic.name}</h3>
+                <div className="topic-stats">
+                  <span>{topic.lesson_count || 0} lessons</span>
+                  <span>{topic.quiz_count || 0} quizzes</span>
+                </div>
+                <div className="topic-progress">
+                  {topic.completed_lessons || 0} / {topic.lesson_count || 0} completed
+                </div>
               </div>
-              <div className="topic-progress">
-                {topic.lessons.filter(l => l.completed).length} / {topic.lessons.length} completed
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {showModal && (

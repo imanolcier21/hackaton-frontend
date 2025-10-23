@@ -1,4 +1,5 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { authAPI, topicsAPI, lessonsAPI, chatAPI } from '../services/api';
 
 const AppContext = createContext();
 
@@ -12,115 +13,228 @@ export const useApp = () => {
 
 export const AppProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [topics, setTopics] = useState([
-    {
-      id: 1,
-      name: 'Introduction to React',
-      lessons: [
-        { id: 1, title: 'What is React?', completed: false },
-        { id: 2, title: 'JSX Basics', completed: false },
-        { id: 3, title: 'Components', completed: false }
-      ],
-      quizzes: [
-        {
-          id: 1,
-          title: 'React Fundamentals Quiz',
-          questions: [
-            {
-              id: 1,
-              question: 'What is React?',
-              options: ['A library', 'A framework', 'A language', 'A database'],
-              correctAnswer: 0
-            },
-            {
-              id: 2,
-              question: 'What does JSX stand for?',
-              options: ['JavaScript XML', 'Java Syntax Extension', 'JavaScript Extension', 'Java XML'],
-              correctAnswer: 0
-            }
-          ]
-        }
-      ]
-    },
-    {
-      id: 2,
-      name: 'JavaScript Basics',
-      lessons: [
-        { id: 1, title: 'Variables and Data Types', completed: false },
-        { id: 2, title: 'Functions', completed: false }
-      ],
-      quizzes: [
-        {
-          id: 1,
-          title: 'JavaScript Quiz',
-          questions: [
-            {
-              id: 1,
-              question: 'Which keyword is used to declare a constant?',
-              options: ['var', 'let', 'const', 'static'],
-              correctAnswer: 2
-            }
-          ]
-        }
-      ]
-    }
-  ]);
-
+  const [topics, setTopics] = useState([]);
   const [currentLesson, setCurrentLesson] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const login = (username, password) => {
-    // Simple mock login - no encryption
-    setUser({ username });
-    return true;
+  // Check for existing user on mount
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    if (storedUser && token) {
+      setUser(JSON.parse(storedUser));
+      fetchTopics();
+    }
+  }, []);
+
+  const login = async (username, password) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await authAPI.login(username, password);
+      const { token, user: userData } = response.data;
+      
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+      
+      await fetchTopics();
+      return true;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Login failed');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const register = async (username, email, password) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await authAPI.register(username, email, password);
+      const { token, user: userData } = response.data;
+      
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+      
+      await fetchTopics();
+      return true;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Registration failed');
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setUser(null);
-  };
-
-  const addTopic = (topicName) => {
-    const newTopic = {
-      id: topics.length + 1,
-      name: topicName,
-      lessons: [],
-      quizzes: []
-    };
-    setTopics([...topics, newTopic]);
-  };
-
-  const completeLesson = (topicId, lessonId) => {
-    setTopics(topics.map(topic => {
-      if (topic.id === topicId) {
-        return {
-          ...topic,
-          lessons: topic.lessons.map(lesson => 
-            lesson.id === lessonId ? { ...lesson, completed: true } : lesson
-          )
-        };
-      }
-      return topic;
-    }));
-  };
-
-  const addChatMessage = (message, isUser = false) => {
-    setChatMessages(prevMessages => [...prevMessages, { message, isUser, timestamp: new Date() }]);
-  };
-
-  const resetChat = () => {
+    setTopics([]);
     setChatMessages([]);
   };
 
-  // Mock AI responses
-  const getMockResponse = (userMessage) => {
-    const responses = [
-      "That's a **great question**! Let me explain...\n\n- First, we need to understand the basics\n- Then, we can move to more advanced concepts\n- Finally, we'll practice with examples",
-      "I see what you're asking. Here's how it works:\n\n1. Start with the fundamentals\n2. Build on that knowledge\n3. Apply it in real scenarios",
-      "**Excellent observation!** The key concept here is understanding how everything connects together.\n\n`Remember`: Practice makes perfect!",
-      "Let me break that down for you:\n\n- **Core concept**: This is the foundation\n- **Implementation**: How we use it in practice\n- **Best practices**: Tips for success",
-      "That's correct! You're getting the hang of it. 🎉\n\n*Keep up the great work!*",
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
+  const fetchTopics = async () => {
+    try {
+      setLoading(true);
+      const response = await topicsAPI.getAll();
+      const topicsData = response.data.topics;
+      
+      // Transform backend data to match frontend format
+      const transformedTopics = topicsData.map(topic => ({
+        id: topic.id,
+        name: topic.name,
+        description: topic.description,
+        lesson_count: parseInt(topic.lesson_count) || 0,
+        quiz_count: parseInt(topic.quiz_count) || 0,
+        completed_lessons: parseInt(topic.completed_lessons) || 0,
+        lessons: [],
+        quizzes: []
+      }));
+      
+      setTopics(transformedTopics);
+    } catch (err) {
+      console.error('Failed to fetch topics:', err);
+      setError(err.response?.data?.error || 'Failed to fetch topics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTopicDetails = async (topicId) => {
+    try {
+      setLoading(true);
+      const response = await topicsAPI.getById(topicId);
+      const topicData = response.data.topic;
+      
+      // Transform backend data
+      const transformedTopic = {
+        id: topicData.id,
+        name: topicData.name,
+        description: topicData.description,
+        lessons: topicData.lessons.map(lesson => ({
+          id: lesson.id,
+          title: lesson.title,
+          content: lesson.content,
+          completed: lesson.completed || false,
+          order_index: lesson.order_index
+        })),
+        quizzes: topicData.quizzes.map(quiz => ({
+          id: quiz.id,
+          title: quiz.title,
+          description: quiz.description,
+          question_count: parseInt(quiz.question_count) || 0,
+          order_index: quiz.order_index
+        }))
+      };
+      
+      // Update topics array with detailed data
+      setTopics(prevTopics => 
+        prevTopics.map(t => t.id === topicId ? transformedTopic : t)
+      );
+      
+      return transformedTopic;
+    } catch (err) {
+      console.error('Failed to fetch topic details:', err);
+      setError(err.response?.data?.error || 'Failed to fetch topic details');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addTopic = async (topicName, description = '') => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await topicsAPI.create(topicName, description);
+      await fetchTopics();
+      return response.data.topic;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create topic');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const completeLesson = async (topicId, lessonId) => {
+    try {
+      await lessonsAPI.complete(lessonId);
+      
+      // Update local state
+      setTopics(prevTopics => 
+        prevTopics.map(topic => {
+          if (topic.id === topicId) {
+            return {
+              ...topic,
+              lessons: topic.lessons.map(lesson => 
+                lesson.id === lessonId ? { ...lesson, completed: true } : lesson
+              )
+            };
+          }
+          return topic;
+        })
+      );
+    } catch (err) {
+      console.error('Failed to complete lesson:', err);
+      setError(err.response?.data?.error || 'Failed to complete lesson');
+    }
+  };
+
+  const loadChatMessages = async (lessonId) => {
+    try {
+      const response = await chatAPI.getMessages(lessonId);
+      const messages = response.data.messages.map(msg => ({
+        message: msg.message,
+        isUser: msg.is_user,
+        timestamp: new Date(msg.created_at)
+      }));
+      setChatMessages(messages);
+    } catch (err) {
+      console.error('Failed to load chat messages:', err);
+      setChatMessages([]);
+    }
+  };
+
+  const addChatMessage = async (lessonId, message, isUser = true) => {
+    try {
+      // Add to local state immediately for better UX
+      const newMessage = { message, isUser, timestamp: new Date() };
+      setChatMessages(prev => [...prev, newMessage]);
+      
+      // Save to backend
+      await chatAPI.createMessage(lessonId, message, isUser);
+    } catch (err) {
+      console.error('Failed to save chat message:', err);
+    }
+  };
+
+  const resetChat = async (lessonId) => {
+    try {
+      if (lessonId) {
+        await chatAPI.deleteMessages(lessonId);
+      }
+      setChatMessages([]);
+    } catch (err) {
+      console.error('Failed to reset chat:', err);
+      setChatMessages([]);
+    }
+  };
+
+  const getMockResponse = async (userMessage) => {
+    try {
+      const response = await chatAPI.getAIResponse(userMessage);
+      return response.data.response;
+    } catch (err) {
+      console.error('Failed to get AI response:', err);
+      return "I'm having trouble responding right now. Please try again.";
+    }
   };
 
   const value = {
@@ -128,11 +242,17 @@ export const AppProvider = ({ children }) => {
     topics,
     currentLesson,
     chatMessages,
+    loading,
+    error,
     login,
+    register,
     logout,
     addTopic,
+    fetchTopics,
+    fetchTopicDetails,
     setCurrentLesson,
     completeLesson,
+    loadChatMessages,
     addChatMessage,
     resetChat,
     getMockResponse

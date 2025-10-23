@@ -1,23 +1,57 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
+import { quizAPI } from '../services/api';
 import './Quiz.css';
 
 const Quiz = () => {
   const { topicId, quizId } = useParams();
   const navigate = useNavigate();
-  const { topics } = useApp();
+  const [quiz, setQuiz] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [answers, setAnswers] = useState([]);
+  const [submittedAnswers, setSubmittedAnswers] = useState([]);
 
-  const topic = topics.find(t => t.id === parseInt(topicId));
-  const quiz = topic?.quizzes.find(q => q.id === parseInt(quizId));
+  useEffect(() => {
+    const fetchQuiz = async () => {
+      try {
+        setLoading(true);
+        const response = await quizAPI.getById(parseInt(quizId));
+        const quizData = response.data.quiz;
+        
+        // Transform questions to match frontend format
+        const transformedQuiz = {
+          id: quizData.id,
+          title: quizData.title,
+          description: quizData.description,
+          questions: quizData.questions.map(q => ({
+            id: q.id,
+            question: q.question,
+            options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
+            correctAnswer: q.correct_answer
+          }))
+        };
+        
+        setQuiz(transformedQuiz);
+      } catch (error) {
+        console.error('Failed to fetch quiz:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQuiz();
+  }, [quizId]);
+
+  if (loading) {
+    return <div style={{ padding: '20px', textAlign: 'center' }}>Loading quiz...</div>;
+  }
 
   if (!quiz) {
-    return <div>Quiz not found</div>;
+    return <div style={{ padding: '20px', textAlign: 'center' }}>Quiz not found</div>;
   }
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
@@ -27,7 +61,7 @@ const Quiz = () => {
     setSelectedAnswer(optionIndex);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const isCorrect = selectedAnswer === currentQuestion.correctAnswer;
     const newAnswers = [...answers, { questionId: currentQuestion.id, selectedAnswer, isCorrect }];
     setAnswers(newAnswers);
@@ -37,6 +71,20 @@ const Quiz = () => {
     }
 
     if (isLastQuestion) {
+      // Submit quiz to backend
+      try {
+        const submissionData = newAnswers.map(ans => ({
+          questionId: ans.questionId,
+          selectedAnswer: ans.selectedAnswer
+        }));
+        
+        const response = await quizAPI.submit(parseInt(quizId), submissionData);
+        setSubmittedAnswers(response.data.attempt.answers || newAnswers);
+      } catch (error) {
+        console.error('Failed to submit quiz:', error);
+        setSubmittedAnswers(newAnswers);
+      }
+      
       setShowResult(true);
     } else {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
@@ -83,13 +131,14 @@ const Quiz = () => {
             <div className="answers-review">
               <h3>Review Your Answers</h3>
               {quiz.questions.map((question, index) => {
-                const userAnswer = answers[index];
+                const userAnswer = (submittedAnswers.length > 0 ? submittedAnswers : answers)[index];
+                const isCorrect = userAnswer?.isCorrect ?? (userAnswer?.selectedAnswer === question.correctAnswer);
                 return (
-                  <div key={question.id} className={`review-item ${userAnswer.isCorrect ? 'correct' : 'incorrect'}`}>
+                  <div key={question.id} className={`review-item ${isCorrect ? 'correct' : 'incorrect'}`}>
                     <p className="review-question">{index + 1}. {question.question}</p>
                     <p className="review-answer">
-                      Your answer: {question.options[userAnswer.selectedAnswer]}
-                      {!userAnswer.isCorrect && (
+                      Your answer: {question.options[userAnswer?.selectedAnswer]}
+                      {!isCorrect && (
                         <span className="correct-answer">
                           {' '}(Correct: {question.options[question.correctAnswer]})
                         </span>

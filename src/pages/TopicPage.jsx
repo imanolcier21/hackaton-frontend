@@ -1,41 +1,67 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import './TopicPage.css';
 
 const TopicPage = () => {
   const { topicId } = useParams();
   const navigate = useNavigate();
-  const { topics } = useApp();
-  
-  const topic = topics.find(t => t.id === parseInt(topicId));
+  const { topics, fetchTopicDetails, loading } = useApp();
+  const [topic, setTopic] = useState(null);
+
+  useEffect(() => {
+    const loadTopic = async () => {
+      let topicData = topics.find(t => t.id === parseInt(topicId));
+      
+      // If topic doesn't have lessons/quizzes loaded, fetch details
+      if (topicData && (!topicData.lessons || topicData.lessons.length === 0)) {
+        const detailed = await fetchTopicDetails(parseInt(topicId));
+        if (detailed) {
+          topicData = detailed;
+        }
+      }
+      
+      setTopic(topicData);
+    };
+
+    loadTopic();
+  }, [topicId, topics, fetchTopicDetails]);
+
+  if (loading && !topic) {
+    return <div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>;
+  }
 
   if (!topic) {
-    return <div>Topic not found</div>;
+    return <div style={{ padding: '20px', textAlign: 'center' }}>Topic not found</div>;
   }
+
+  // Ensure lessons and quizzes arrays exist
+  const lessons = topic.lessons || [];
+  const quizzes = topic.quizzes || [];
 
   // Create timeline items (lessons and quizzes interleaved)
   const timelineItems = [];
-  const lessonsPerQuiz = Math.ceil(topic.lessons.length / (topic.quizzes.length + 1));
+  const lessonsPerQuiz = Math.ceil(lessons.length / (quizzes.length + 1));
   
   let lessonIndex = 0;
   let quizIndex = 0;
 
-  while (lessonIndex < topic.lessons.length || quizIndex < topic.quizzes.length) {
+  while (lessonIndex < lessons.length || quizIndex < quizzes.length) {
     // Add a group of lessons
-    for (let i = 0; i < lessonsPerQuiz && lessonIndex < topic.lessons.length; i++) {
+    for (let i = 0; i < lessonsPerQuiz && lessonIndex < lessons.length; i++) {
       timelineItems.push({
         type: 'lesson',
-        data: topic.lessons[lessonIndex],
+        data: lessons[lessonIndex],
         index: lessonIndex
       });
       lessonIndex++;
     }
 
     // Add a quiz after the lesson group
-    if (quizIndex < topic.quizzes.length) {
+    if (quizIndex < quizzes.length) {
       timelineItems.push({
         type: 'quiz',
-        data: topic.quizzes[quizIndex],
+        data: quizzes[quizIndex],
         index: quizIndex
       });
       quizIndex++;
@@ -71,8 +97,13 @@ const TopicPage = () => {
           <p className="timeline-description">Follow the path below to complete this topic</p>
         </div>
 
-        <div className="timeline">
-          {timelineItems.map((item, index) => {
+        {timelineItems.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+            <p>No lessons or quizzes yet. Create some content to get started!</p>
+          </div>
+        ) : (
+          <div className="timeline">
+            {timelineItems.map((item, index) => {
             const locked = isItemLocked(item, index);
             
             if (item.type === 'lesson') {
@@ -110,14 +141,15 @@ const TopicPage = () => {
                   >
                     <div className="timeline-badge quiz-badge">🎯 Quiz</div>
                     <h3>{item.data.title}</h3>
-                    <p className="quiz-info">{item.data.questions.length} questions</p>
+                    <p className="quiz-info">{item.data.question_count || 0} questions</p>
                     {locked && <span className="status-text locked-text">Complete previous lessons first</span>}
                   </div>
                 </div>
               );
             }
           })}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
