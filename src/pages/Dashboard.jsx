@@ -9,6 +9,8 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [topicName, setTopicName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [creatingTopicName, setCreatingTopicName] = useState('');
 
   // Refresh topics when returning to dashboard
   useEffect(() => {
@@ -17,11 +19,17 @@ const Dashboard = () => {
     }
   }, [user]);
 
-  const handleCreateTopic = () => {
+  const handleCreateTopic = async () => {
     if (topicName.trim()) {
-      addTopic(topicName);
-      setTopicName('');
+      setCreatingTopicName(topicName);
+      setIsCreating(true);
       setShowModal(false);
+      
+      await addTopic(topicName);
+      
+      setIsCreating(false);
+      setCreatingTopicName('');
+      setTopicName('');
     }
   };
 
@@ -44,7 +52,17 @@ const Dashboard = () => {
           </button>
         </div>
 
-        {topics.length === 0 ? (
+        {isCreating && (
+          <div className="creating-topic-overlay">
+            <div className="creating-topic-card">
+              <div className="spinner"></div>
+              <h3>{creatingTopicName}</h3>
+              <p>Creating learning path...</p>
+            </div>
+          </div>
+        )}
+
+        {topics.length === 0 && !isCreating ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
             <p>No topics yet. Create your first topic to get started!</p>
           </div>
