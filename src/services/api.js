@@ -103,8 +103,20 @@ export const chatAPI = {
     api.post(`/chat/lesson/${lessonId}/messages`, { message, is_user }),
   deleteMessages: (lessonId) =>
     api.delete(`/chat/lesson/${lessonId}/messages`),
-  getAIResponse: (message) =>
-    api.post('/chat/ai-response', { message }),
+  getInitialExplanation: (lessonId) =>
+    api.post(`/chat/lesson/${lessonId}/initial-explanation`),
+  getAIResponse: (lessonId, message) =>
+    api.post(`/chat/lesson/${lessonId}/ai-response`, { message }),
+};
+
+// Evaluation API (Model 6)
+export const evaluationAPI = {
+  runSystemTest: (topicName) =>
+    api.post(`/evaluation/system-test`, { topicName }),
+  evaluateLesson: (lessonId) =>
+    api.post(`/evaluation/lesson/${lessonId}/evaluate`),
+  evaluateTopic: (topicId) =>
+    api.post(`/evaluation/topic/${topicId}/evaluate`),
 };
 
 export default api;

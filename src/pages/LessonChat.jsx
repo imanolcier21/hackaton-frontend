@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { evaluationAPI } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import './LessonChat.css';
 
 const LessonChat = () => {
   const { topicId, lessonId } = useParams();
   const navigate = useNavigate();
-  const { topics, chatMessages, addChatMessage, resetChat, loadChatMessages, getMockResponse, completeLesson } = useApp();
+  const { topics, chatMessages, addChatMessage, loadChatMessages, getInitialExplanation, getMockResponse, completeLesson } = useApp();
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evaluation, setEvaluation] = useState(null);
   const messagesEndRef = useRef(null);
   const initializedRef = useRef(false);
 
@@ -18,27 +22,50 @@ const LessonChat = () => {
 
   useEffect(() => {
     const initChat = async () => {
-      if (!initializedRef.current && lesson) {
-        await resetChat(parseInt(lessonId));
-        await loadChatMessages(parseInt(lessonId));
+      // Prevent multiple initialization calls
+      if (initializedRef.current || isInitializing || !lesson) {
+        return;
+      }
+      
+      setIsInitializing(true);
+      initializedRef.current = true;
+      
+      try {
+        // Load existing messages first
+        const messages = await loadChatMessages(parseInt(lessonId));
         
-        // If no messages, add initial greeting
-        const hasMessages = chatMessages.length > 0;
-        if (!hasMessages) {
-          const greeting = `Hello! Welcome to **"${lesson.title}"**. I'm here to help you learn. Feel free to ask me anything!`;
-          await addChatMessage(parseInt(lessonId), greeting, false);
+        // If no messages, generate initial explanation from backend
+        if ((!messages || messages.length === 0) && !isTyping) {
+          setIsTyping(true);
+          try {
+            const explanation = await getInitialExplanation(parseInt(lessonId));
+            // Backend already saved the message, just reload to get it
+            if (explanation) {
+              await loadChatMessages(parseInt(lessonId));
+            }
+          } catch (error) {
+            console.error('Failed to get initial explanation:', error);
+            // Fallback to simple message if backend fails
+            const fallback = `Hello! Welcome to **"${lesson.title}"**. I'm here to help you learn. Feel free to ask me anything!`;
+            await addChatMessage(parseInt(lessonId), fallback, false);
+          } finally {
+            setIsTyping(false);
+          }
         }
-        
-        initializedRef.current = true;
+      } finally {
+        setIsInitializing(false);
       }
     };
     
     initChat();
     
     return () => {
-      initializedRef.current = false;
+      // Only reset on unmount, not on every render
+      if (initializedRef.current) {
+        initializedRef.current = false;
+      }
     };
-  }, [lessonId, lesson?.title]);
+  }, [lessonId]); // Removed lesson?.title from dependencies to prevent re-runs
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,9 +82,9 @@ const LessonChat = () => {
       
       setIsTyping(true);
       
-      // Get AI response
+      // Get AI response from backend with lessonId
       try {
-        const response = await getMockResponse(userMsg);
+        const response = await getMockResponse(parseInt(lessonId), userMsg);
         await addChatMessage(parseInt(lessonId), response, false);
       } catch (error) {
         console.error('Failed to get AI response:', error);
@@ -70,6 +97,23 @@ const LessonChat = () => {
   const handleFinishLesson = () => {
     completeLesson(parseInt(topicId), parseInt(lessonId));
     navigate(`/topic/${topicId}`);
+  };
+
+  const handleTestModel6 = async () => {
+    try {
+      setIsEvaluating(true);
+      setEvaluation(null);
+      
+      const response = await evaluationAPI.evaluateLesson(parseInt(lessonId));
+      setEvaluation(response.data.evaluation);
+      
+      alert(`Model 6 Evaluation Complete!\n\nScore: ${response.data.evaluation.overallScore}/100\n\nFeedback: ${response.data.evaluation.studentFeedback}`);
+    } catch (error) {
+      console.error('Failed to evaluate lesson:', error);
+      alert('Failed to run Model 6 evaluation. Please try again.');
+    } finally {
+      setIsEvaluating(false);
+    }
   };
 
   if (!lesson) {
@@ -128,7 +172,54 @@ const LessonChat = () => {
           <button onClick={handleFinishLesson} className="btn-finish">
             I have understood everything
           </button>
+          <button 
+            onClick={handleTestModel6} 
+            className="btn-evaluate"
+            disabled={isEvaluating}
+          >
+            {isEvaluating ? '🤖 Evaluating...' : '🤖 Test Model 6'}
+          </button>
         </div>
+
+        {evaluation && (
+          <div style={{
+            marginTop: '20px',
+            padding: '15px',
+            backgroundColor: '#f3f4f6',
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Model 6 Evaluation Results</h3>
+            <div style={{ marginBottom: '10px' }}>
+              <strong>Overall Score:</strong> {evaluation.overallScore}/100
+            </div>
+            <div style={{ marginBottom: '10px' }}>
+              <strong>Breakdown:</strong>
+              <ul style={{ marginTop: '5px' }}>
+                <li>Clarity: {evaluation.breakdown.clarity}/25</li>
+                <li>Completeness: {evaluation.breakdown.completeness}/25</li>
+                <li>Engagement: {evaluation.breakdown.engagement}/20</li>
+                <li>Examples: {evaluation.breakdown.examples}/15</li>
+                <li>Learning Outcome: {evaluation.breakdown.learningOutcome}/15</li>
+              </ul>
+            </div>
+            <div style={{ marginBottom: '10px' }}>
+              <strong>Strengths:</strong>
+              <ul style={{ marginTop: '5px' }}>
+                {evaluation.strengths.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            </div>
+            <div style={{ marginBottom: '10px' }}>
+              <strong>Weaknesses:</strong>
+              <ul style={{ marginTop: '5px' }}>
+                {evaluation.weaknesses.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            </div>
+            <div>
+              <strong>Student Feedback:</strong> {evaluation.studentFeedback}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

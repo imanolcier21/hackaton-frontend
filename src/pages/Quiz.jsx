@@ -22,19 +22,42 @@ const Quiz = () => {
         const response = await quizAPI.getById(parseInt(quizId));
         const quizData = response.data.quiz;
         
+        console.log('Fetched quiz data:', quizData); // Debug log
+        
         // Transform questions to match frontend format
         const transformedQuiz = {
           id: quizData.id,
           title: quizData.title,
           description: quizData.description,
-          questions: quizData.questions.map(q => ({
-            id: q.id,
-            question: q.question,
-            options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
-            correctAnswer: q.correct_answer
-          }))
+          questions: (quizData.questions || []).map(q => {
+            let options = q.options;
+            
+            // Parse options if it's a string
+            if (typeof options === 'string') {
+              try {
+                options = JSON.parse(options);
+              } catch (e) {
+                console.error('Failed to parse options:', options, e);
+                options = [];
+              }
+            }
+            
+            // Ensure options is an array
+            if (!Array.isArray(options)) {
+              console.error('Options is not an array:', options);
+              options = [];
+            }
+            
+            return {
+              id: q.id,
+              question: q.question,
+              options: options,
+              correctAnswer: q.correct_answer
+            };
+          })
         };
         
+        console.log('Transformed quiz:', transformedQuiz); // Debug log
         setQuiz(transformedQuiz);
       } catch (error) {
         console.error('Failed to fetch quiz:', error);
@@ -54,7 +77,31 @@ const Quiz = () => {
     return <div style={{ padding: '20px', textAlign: 'center' }}>Quiz not found</div>;
   }
 
+  if (!quiz.questions || quiz.questions.length === 0) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <h2>No questions available</h2>
+        <p>This quiz doesn't have any questions yet.</p>
+        <button onClick={() => navigate(`/topic/${topicId}`)} className="btn-back">
+          ← Back to Topic
+        </button>
+      </div>
+    );
+  }
+
   const currentQuestion = quiz.questions[currentQuestionIndex];
+  
+  if (!currentQuestion) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <h2>Question not found</h2>
+        <button onClick={() => navigate(`/topic/${topicId}`)} className="btn-back">
+          ← Back to Topic
+        </button>
+      </div>
+    );
+  }
+
   const isLastQuestion = currentQuestionIndex === quiz.questions.length - 1;
 
   const handleAnswerSelect = (optionIndex) => {
@@ -172,16 +219,20 @@ const Quiz = () => {
           <h2 className="question-text">{currentQuestion.question}</h2>
           
           <div className="options-list">
-            {currentQuestion.options.map((option, index) => (
-              <button
-                key={index}
-                className={`option-button ${selectedAnswer === index ? 'selected' : ''}`}
-                onClick={() => handleAnswerSelect(index)}
-              >
-                <span className="option-letter">{String.fromCharCode(65 + index)}</span>
-                <span className="option-text">{option}</span>
-              </button>
-            ))}
+            {currentQuestion.options && Array.isArray(currentQuestion.options) ? (
+              currentQuestion.options.map((option, index) => (
+                <button
+                  key={index}
+                  className={`option-button ${selectedAnswer === index ? 'selected' : ''}`}
+                  onClick={() => handleAnswerSelect(index)}
+                >
+                  <span className="option-letter">{String.fromCharCode(65 + index)}</span>
+                  <span className="option-text">{option}</span>
+                </button>
+              ))
+            ) : (
+              <p>No options available for this question</p>
+            )}
           </div>
 
           <button

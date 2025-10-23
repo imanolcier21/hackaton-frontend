@@ -196,9 +196,33 @@ export const AppProvider = ({ children }) => {
         timestamp: new Date(msg.created_at)
       }));
       setChatMessages(messages);
+      return messages;
     } catch (err) {
       console.error('Failed to load chat messages:', err);
       setChatMessages([]);
+      return [];
+    }
+  };
+
+  const getInitialExplanation = async (lessonId) => {
+    try {
+      const response = await chatAPI.getInitialExplanation(lessonId);
+      return response.data.response;
+    } catch (err) {
+      // If 409 conflict (already exists), just reload messages
+      if (err.response?.status === 409) {
+        console.log('Initial explanation already exists, reloading messages...');
+        await loadChatMessages(lessonId);
+        return null; // Signal that we should skip adding message
+      }
+      // If 400 (already has messages), reload them
+      if (err.response?.status === 400) {
+        console.log('Lesson already has messages, reloading...');
+        await loadChatMessages(lessonId);
+        return null;
+      }
+      console.error('Failed to get initial explanation:', err);
+      return "I'm having trouble generating the initial explanation. Please try again.";
     }
   };
 
@@ -227,9 +251,9 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const getMockResponse = async (userMessage) => {
+  const getMockResponse = async (lessonId, userMessage) => {
     try {
-      const response = await chatAPI.getAIResponse(userMessage);
+      const response = await chatAPI.getAIResponse(lessonId, userMessage);
       return response.data.response;
     } catch (err) {
       console.error('Failed to get AI response:', err);
@@ -253,6 +277,7 @@ export const AppProvider = ({ children }) => {
     setCurrentLesson,
     completeLesson,
     loadChatMessages,
+    getInitialExplanation,
     addChatMessage,
     resetChat,
     getMockResponse
